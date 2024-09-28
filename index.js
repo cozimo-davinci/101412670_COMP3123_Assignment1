@@ -1,11 +1,54 @@
 const express = require('express');
 const app = express();
 const mongoose = require('mongoose');
+const swaggerUI = require('swagger-ui-express');
+const swaggerJsDoc = require('swagger-jsdoc');
 
-app.use(express.json());
+
 const User = require('./models/users.model');
 const Employee = require('./models/employees.model');
 const bcrypt = require('bcrypt');
+const swagger = require('./swagger_setup.js')
+const swaggerDocumentation = swaggerJsDoc(swagger);
+const bodyParser = require('body-parser');
+const generateToken = require('./jwtUtils.js');
+const jwt = require('jsonwebtoken');
+
+
+app.use(express.json());
+app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerDocumentation));
+app.use(bodyParser.json());
+
+// JWT validation
+const validateToken = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    const secretKey = process.env.JWT_SECRET || "fallbackSecretKey";
+
+    if (authHeader) {
+        const token = authHeader.split(' ')[1]; // Bearer Token
+
+        jwt.verify(token, secretKey, (err, payload) => {
+            if (err) {
+                return res.sendStatus(403).json({
+                    success: false,
+                    message: "Invalid Token",
+                }); // Forbidden
+            } else {
+                req.user = payload;
+                next();
+            }
+
+        });
+    } else {
+        res.sendStatus(401).json({
+            success: false,
+            message: "Token is not provided",
+        }); // Unauthorized
+    }
+};
+
+
+
 
 mongoose.connect("mongodb+srv://admin:admin@backend.qru7w.mongodb.net/Node-API?retryWrites=true&w=majority&appName=backend")
     .then(() => {
@@ -16,13 +59,42 @@ mongoose.connect("mongodb+srv://admin:admin@backend.qru7w.mongodb.net/Node-API?r
         console.log("Connection failed!");
     });
 
-app.listen(3000, () => {
-    console.log('Server is running on port 3000');
+
+app.listen(3002, () => {
+    console.log('Server is running on port 3002 at http://localhost:3002/');
 });
 
 app.get('/', (req, res) => {
     res.send("Hello from Node API Updated")
 });
+
+/**
+ * @swagger
+ * /api/v1/user/signup:
+ *   post:
+ *     summary: Create a new user
+ *     tags: [User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ *       400:
+ *         description: Email already exists or missing required fields
+ *       500:
+ *         description: Internal server error
+ */
 
 app.post('/api/v1/user/signup', async (req, res) => {
     try {
@@ -42,6 +114,7 @@ app.post('/api/v1/user/signup', async (req, res) => {
             return res.status(400).json({ message: 'Email already exists' });
         }
 
+
         // Create the new user and save it to the database
         const newUser = await User.create({
             ...req.body,
@@ -55,7 +128,31 @@ app.post('/api/v1/user/signup', async (req, res) => {
 });
 
 
-
+/**
+ * @swagger
+ * /api/v1/user/login:
+ *   post:
+ *     summary: Login a user
+ *     tags: [User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *       400:
+ *         description: Invalid email or password
+ *       500:
+ *         description: Internal server error
+ */
 
 app.post('/api/v1/user/login', async (req, res) => {
     try {
@@ -73,14 +170,34 @@ app.post('/api/v1/user/login', async (req, res) => {
         if (!isPasswordValid) {
             return res.status(400).json({ message: 'Invalid password' });
         }
+        // Generate JWT Token
+        const { accessToken, refreshToken } = generateToken(user);
 
-        res.status(200).json({ message: 'Login successful' });
+        res.status(200).json({
+            message: 'Login successful',
+            success: true,
+            accessToken,
+            refreshToken,
+
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 });
 
 
+/**
+ * @swagger
+ * /api/v1/emp/employees:
+ *   get:
+ *     summary: Get all employees
+ *     tags: [Employee]
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *       500:
+ *         description: Internal server error
+ */
 app.get('/api/v1/emp/employees', async (req, res) => {
     try {
         const employee = await Employee.find(req.body);
@@ -89,6 +206,49 @@ app.get('/api/v1/emp/employees', async (req, res) => {
         res.status(500).json({ message: err.message })
     }
 });
+
+
+/**
+ * @swagger
+ * /api/v1/emp/employees:
+ *   post:
+ *     summary: Create a new employee
+ *     description: This API creates a new employee record.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: The employee's name.
+ *               position:
+ *                 type: string
+ *                 description: The employee's position in the company.
+ *               salary:
+ *                 type: number
+ *                 description: The employee's salary.
+ *     responses:
+ *       201:
+ *         description: Employee created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 position:
+ *                   type: string
+ *                 salary:
+ *                   type: number
+ *       500:
+ *         description: Internal server error
+ */
 
 app.post('/api/v1/emp/employees', async (req, res) => {
     try {
@@ -100,7 +260,42 @@ app.post('/api/v1/emp/employees', async (req, res) => {
     }
 });
 
-app.get('/api/v1/emp/employees/:{eid}', async (req, res) => {
+/**
+ * @swagger
+ * /api/v1/emp/employees/eid:
+ *   get:
+ *     summary: Get employee by ID
+ *     description: This API retrieves an employee's details by their ID.
+ *     parameters:
+ *       - in: path
+ *         name: eid
+ *         required: true
+ *         description: Employee ID
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Employee details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 position:
+ *                   type: string
+ *                 salary:
+ *                   type: number
+ *       404:
+ *         description: Employee not found
+ *       500:
+ *         description: Internal server error
+ */
+
+app.get('/api/v1/emp/employees/:eid', async (req, res) => {
     try {
         const employee = await Employee.findById(req.params.eid);
         res.status(200).json(employee);
@@ -108,6 +303,57 @@ app.get('/api/v1/emp/employees/:{eid}', async (req, res) => {
         res.status(500).json({ message: error.message })
     }
 });
+
+/**
+ * @swagger
+ * /api/v1/emp/employees/eid:
+ *   put:
+ *     summary: Update employee details
+ *     description: This API updates the details of an employee by their ID.
+ *     parameters:
+ *       - in: path
+ *         name: eid
+ *         required: true
+ *         description: Employee ID
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: The updated name of the employee.
+ *               position:
+ *                 type: string
+ *                 description: The updated position of the employee.
+ *               salary:
+ *                 type: number
+ *                 description: The updated salary of the employee.
+ *     responses:
+ *       200:
+ *         description: Employee details updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 position:
+ *                   type: string
+ *                 salary:
+ *                   type: number
+ *       404:
+ *         description: Employee not found
+ *       500:
+ *         description: Internal server error
+ */
 
 app.put('/api/v1/emp/employees/:eid', async (req, res) => {
     try {
@@ -124,7 +370,55 @@ app.put('/api/v1/emp/employees/:eid', async (req, res) => {
     }
 });
 
-app.delete('/api/v1/emp/employees?/:eid', async (req, res) => {
+
+/**
+ * @swagger
+ * /api/v1/emp/employees/eid:
+ *   delete:
+ *     summary: Delete an employee by ID
+ *     description: This API deletes an employee by their ID from the database.
+ *     tags: [Employee]
+ *     parameters:
+ *       - in: path
+ *         name: eid
+ *         required: true
+ *         description: The ID of the employee to delete.
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Employee details deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Employee details deleted successfully!
+ *       404:
+ *         description: Employee not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Employee not found
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Error message describing the issue
+ */
+
+app.delete('/api/v1/emp/employees/:eid', async (req, res) => {
     try {
 
         const employee = await Employee.findByIdAndDelete(req.params.eid);
@@ -136,4 +430,30 @@ app.delete('/api/v1/emp/employees?/:eid', async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: error.message })
     }
+});
+
+app.post('/api/v1/user/refresh-token', (req, res) => {
+    const { refreshToken } = req.body;
+    const refreshSecretKey = process.env.JWT_REFRESH_SECRET || 'fallbackRefreshSecretKey';
+
+    if (!refreshToken) {
+        return res.status(401).json({ message: "Refresh Token is missing" });
+
+    }
+
+    // Verify refresh token
+    jwt.verify(refreshToken, refreshSecretKey, (error, user) => {
+        if (error) {
+            return res.status(403).json({ message: "Invalid refresh token" });
+        }
+
+        // Generate new access token
+        const accessToken = jwt.sign({
+            id: user.id,
+            email: user.email,
+        }, refreshSecretKey, { expiresIn: '7d' });
+        res.status(200).json({ accessToken });
+    });
+
+
 });
