@@ -432,6 +432,58 @@ app.delete('/api/v1/emp/employees/:eid', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/v1/user/refresh-token:
+ *   post:
+ *     summary: Refresh an access token
+ *     description: This endpoint allows the user to refresh their access token using a valid refresh token. The new access token will be valid for a specified period.
+ *     tags: [User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: The refresh token provided during login.
+ *     responses:
+ *       200:
+ *         description: New access token generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *                   description: The newly generated access token.
+ *       401:
+ *         description: Refresh token is missing
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Refresh Token is missing"
+ *       403:
+ *         description: Invalid refresh token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid refresh token"
+ *       500:
+ *         description: Internal server error
+ */
+
 app.post('/api/v1/user/refresh-token', (req, res) => {
     const { refreshToken } = req.body;
     const refreshSecretKey = process.env.JWT_REFRESH_SECRET || 'fallbackRefreshSecretKey';
