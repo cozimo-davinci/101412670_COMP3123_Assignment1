@@ -3,6 +3,7 @@ const app = express();
 const mongoose = require('mongoose');
 const swaggerUI = require('swagger-ui-express');
 const swaggerJsDoc = require('swagger-jsdoc');
+require('dotenv').config();
 
 
 const User = require('./models/users.model');
@@ -50,7 +51,7 @@ const validateToken = (req, res, next) => {
 
 
 
-mongoose.connect("mongodb+srv://admin:admin@backend.qru7w.mongodb.net/Node-API?retryWrites=true&w=majority&appName=backend")
+mongoose.connect(process.env.MONGO_URI)
     .then(() => {
         console.log("Connected to the database!");
 
