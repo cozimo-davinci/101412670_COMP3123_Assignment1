@@ -14,7 +14,7 @@ const swaggerOptions = {
         ],
     },
     apis: [
-        "./index.js"
+        "./index.js", './employeeEndpoints.js', './usersEndpoints.js'
     ]
 };
 module.exports = swaggerOptions;
